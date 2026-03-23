@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""
+dyad — Context assembler and injector for the Jason/Claude working relationship.
+
+Usage:
+  dyad [--surface SURFACE] [--repo REPO] [prompt]
+  dyad --status
+  dyad --update-focus "task description"
+
+Assembles identity + workspace + surface profile into a system prompt,
+injects into `claude -p`, and appends to the session log.
+
+Surfaces: mobile | terminal | ide | browser | api
+  Default: terminal
+
+Examples:
+  dyad "what's the current state of the-lockout?"
+  dyad --surface mobile "thinking about the dyad lexicon"
+  dyad --surface ide --repo power-explained "add a thinker page for Bookchin"
+  dyad --status
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+DYAD_DIR = Path(__file__).parent
+IDENTITY_FILE = DYAD_DIR / "identity.md"
+WORKSPACE_FILE = DYAD_DIR / "workspace.json"
+SURFACES_FILE = DYAD_DIR / "surfaces.json"
+AGENTS_DIR = DYAD_DIR / "agents"
+SESSION_LOG = DYAD_DIR / "sessions.md"
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+def load_text(path: Path) -> str:
+    return path.read_text()
+
+
+def assemble_context(surface_name: str, repo: str | None = None) -> str:
+    """Assemble the full system prompt for a session."""
+    identity = load_text(IDENTITY_FILE)
+    workspace = load_json(WORKSPACE_FILE)
+    surfaces = load_json(SURFACES_FILE)
+    agent = load_text(AGENTS_DIR / "claude.md")
+
+    surface = surfaces["surfaces"].get(
+        surface_name,
+        surfaces["surfaces"][surfaces["defaults"]["surface"]]
+    )
+
+    # Build context based on surface injection level
+    injection = surface.get("context_injection", "identity + full workspace")
+
+    parts = []
+
+    # Always: agent identity
+    parts.append(f"## Agent identity\n\n{agent}")
+
+    # Always: operator identity
+    parts.append(f"## Operator identity\n\n{identity}")
+
+    # Always: surface context
+    parts.append(
+        f"## Current surface\n\n"
+        f"Surface: **{surface_name}**\n"
+        f"Register: {surface['register']}\n"
+        f"Assumption: {surface['assumption']}\n\n"
+        f"Response guidance:\n"
+        + "\n".join(f"- {k}: {v}" for k, v in surface["response"].items())
+    )
+
+    # Conditional: workspace
+    if "full workspace" in injection or "workspace" in injection:
+        focus = workspace.get("current_focus", {})
+        recent = workspace.get("recent", [])
+
+        parts.append(
+            f"## Current focus\n\n"
+            f"Project: {focus.get('project', '—')}\n"
+            f"Task: {focus.get('task', '—')}\n"
+            f"Context: {focus.get('context', '—')}"
+        )
+
+        if recent:
+            parts.append(
+                "## Recent work\n\n"
+                + "\n".join(f"- {r}" for r in recent[:5])
+            )
+
+    # Conditional: specific repo context
+    if repo or ("active repo" in injection):
+        repo_name = repo or focus.get("project")
+        if repo_name:
+            repos = workspace.get("repos", {})
+            repo_data = repos.get(repo_name, {})
+            if repo_data:
+                parts.append(
+                    f"## Active repo: {repo_name}\n\n"
+                    + "\n".join(f"- {k}: {v}" for k, v in repo_data.items())
+                )
+
+    # Always: all repos summary (for terminal/full contexts)
+    if "full workspace" in injection:
+        repos = workspace.get("repos", {})
+        repo_summary = "\n".join(
+            f"- **{name}**: {data.get('role', '')} ({data.get('github', '')})"
+            for name, data in repos.items()
+        )
+        parts.append(f"## All repos\n\n{repo_summary}")
+
+    return "\n\n---\n\n".join(parts)
+
+
+def log_session(surface: str, prompt: str, note: str = "") -> None:
+    """Append session entry to sessions.md."""
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    entry = f"\n## {ts} [{surface}]\n\n{prompt[:200]}{'…' if len(prompt) > 200 else ''}\n"
+    if note:
+        entry += f"\n*{note}*\n"
+    with open(SESSION_LOG, "a") as f:
+        f.write(entry)
+
+
+def update_focus(task: str) -> None:
+    """Update current_focus.task in workspace.json."""
+    workspace = load_json(WORKSPACE_FILE)
+    workspace["current_focus"]["task"] = task
+    workspace["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    WORKSPACE_FILE.write_text(json.dumps(workspace, indent=2))
+    print(f"[dyad] Focus updated: {task}")
+
+
+def show_status() -> None:
+    """Print current workspace status."""
+    workspace = load_json(WORKSPACE_FILE)
+    surfaces = load_json(SURFACES_FILE)
+
+    focus = workspace.get("current_focus", {})
+    print(f"\ndyad — {workspace.get('updated', '?')}")
+    print(f"\nFocus:   {focus.get('project', '—')} / {focus.get('task', '—')}")
+    print(f"\nRepos:")
+    for name, data in workspace.get("repos", {}).items():
+        print(f"  {name:20} {data.get('role', '')}")
+    print(f"\nSurfaces: {', '.join(surfaces['surfaces'].keys())}")
+    print(f"Default:  {surfaces['defaults']['surface']}")
+    print()
+
+
+def run_claude(system_prompt: str, user_prompt: str, surface: str) -> None:
+    """Inject context and run claude -p."""
+    # Write system prompt to temp file to avoid shell escaping issues
+    tmp_system = Path("/tmp/dyad_system_prompt.md")
+    tmp_system.write_text(system_prompt)
+
+    cmd = ["claude", "-p", user_prompt, "--system-prompt-file", str(tmp_system)]
+
+    # Surface-specific flags
+    surfaces = load_json(SURFACES_FILE)
+    surface_config = surfaces["surfaces"].get(surface, {})
+
+    print(f"[dyad] Surface: {surface} | Register: {surface_config.get('register', '?')}")
+    print(f"[dyad] Context assembled ({len(system_prompt)} chars)")
+    print()
+
+    try:
+        result = subprocess.run(cmd, check=False)
+        log_session(surface, user_prompt, f"exit {result.returncode}")
+    except FileNotFoundError:
+        # claude CLI not available — print the assembled prompt for inspection
+        print("[dyad] claude CLI not found. Assembled system prompt:\n")
+        print("=" * 60)
+        print(system_prompt)
+        print("=" * 60)
+        print(f"\nUser prompt: {user_prompt}")
+        log_session(surface, user_prompt, "claude CLI not found — prompt printed")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="dyad — context assembler for the Jason/Claude working relationship",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "--surface", "-s",
+        default="terminal",
+        choices=["mobile", "terminal", "ide", "browser", "api"],
+        help="Device/context surface (default: terminal)",
+    )
+    parser.add_argument(
+        "--repo", "-r",
+        default=None,
+        help="Active repo to include in context",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show current workspace status and exit",
+    )
+    parser.add_argument(
+        "--update-focus",
+        metavar="TASK",
+        help="Update current_focus.task in workspace.json",
+    )
+    parser.add_argument(
+        "prompt",
+        nargs="?",
+        default=None,
+        help="Prompt to send (reads from stdin if omitted)",
+    )
+
+    args = parser.parse_args()
+
+    if args.status:
+        show_status()
+        return
+
+    if args.update_focus:
+        update_focus(args.update_focus)
+        return
+
+    # Get prompt
+    if args.prompt:
+        prompt = args.prompt
+    elif not sys.stdin.isatty():
+        prompt = sys.stdin.read().strip()
+    else:
+        print("[dyad] Enter prompt (Ctrl-D to submit):")
+        try:
+            prompt = sys.stdin.read().strip()
+        except KeyboardInterrupt:
+            print("\n[dyad] Cancelled.")
+            return
+
+    if not prompt:
+        parser.print_help()
+        return
+
+    system_prompt = assemble_context(args.surface, args.repo)
+    run_claude(system_prompt, prompt, args.surface)
+
+
+if __name__ == "__main__":
+    main()

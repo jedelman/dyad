@@ -1,0 +1,80 @@
+{
+  "schema": "dyad/surfaces@0.1",
+
+  "surfaces": {
+    "mobile": {
+      "signal": "mobile",
+      "register": "conversational",
+      "depth": "shallow",
+      "assumption": "thinking out loud, not building — ideas, questions, 3am insights",
+      "response": {
+        "format": "prose, short paragraphs",
+        "length": "brief — develop the idea, don't implement it",
+        "code": "none unless specifically requested",
+        "structure": "minimal — no headers, no bullets unless essential"
+      },
+      "context_injection": "identity + current_focus only — no full workspace"
+    },
+
+    "terminal": {
+      "signal": "terminal",
+      "register": "collaborative",
+      "depth": "full",
+      "assumption": "building something specific — implementation mode",
+      "response": {
+        "format": "code + prose, structured as needed",
+        "length": "as long as the task requires",
+        "code": "full implementations, committed to git",
+        "structure": "whatever serves the work"
+      },
+      "context_injection": "identity + full workspace + active repo context"
+    },
+
+    "ide": {
+      "signal": "ide",
+      "register": "technical",
+      "depth": "full",
+      "assumption": "in a file, solving a specific problem",
+      "response": {
+        "format": "code-first, prose as annotation",
+        "length": "precise — don't pad",
+        "code": "production-quality, no placeholders",
+        "structure": "inline with the file being edited"
+      },
+      "context_injection": "identity + active repo + CLAUDE.md"
+    },
+
+    "browser": {
+      "signal": "browser",
+      "register": "editorial",
+      "depth": "medium",
+      "assumption": "reviewing, publishing, navigating — output mode",
+      "response": {
+        "format": "formatted, navigable",
+        "length": "medium — enough context to make decisions",
+        "code": "minimal — this is review/publish mode",
+        "structure": "clear sections, scannable"
+      },
+      "context_injection": "identity + workspace + surface-specific system prompt"
+    },
+
+    "api": {
+      "signal": "api",
+      "register": "collaborative",
+      "depth": "full",
+      "assumption": "programmatic invocation — treat as terminal unless overridden",
+      "response": {
+        "format": "structured output preferred",
+        "length": "as long as the task requires",
+        "code": "full implementations",
+        "structure": "JSON-friendly where applicable"
+      },
+      "context_injection": "identity + full workspace"
+    }
+  },
+
+  "defaults": {
+    "surface": "terminal",
+    "fallback": "if surface signal absent, assume terminal"
+  }
+}

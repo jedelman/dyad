@@ -1,0 +1,70 @@
+{
+  "schema": "dyad/workspace@0.1",
+  "updated": "2026-03-23",
+
+  "operator": {
+    "handle": "jason",
+    "did": null,
+    "agent": {
+      "name": "Claude",
+      "model": "claude-sonnet-4-6",
+      "identity": "agents/claude.md"
+    }
+  },
+
+  "repos": {
+    "power-explained": {
+      "github": "jedelman/power-explained",
+      "role": "static site — commons political education",
+      "branch": "main",
+      "deploys_to": "github-pages",
+      "notes": "Plain HTML/CSS. Commits push directly to live site."
+    },
+    "atproto-agent": {
+      "github": "jedelman/atproto-agent",
+      "role": "Scout-Two — autonomous Bluesky agent",
+      "branch": "master",
+      "agent": "scout-two.bsky.social",
+      "notes": "Scout's CLAUDE.md, memory/, requests.md feedback loop."
+    },
+    "the-lockout": {
+      "github": "jedelman/the-lockout",
+      "role": "local editorial pipeline — world events to social posts",
+      "branch": "main",
+      "run": "streamlit run app.py",
+      "notes": "Four-stage pipeline: filter → verify → teach → generate. Audit logged."
+    },
+    "commons-wire": {
+      "github": "jedelman/commons-wire",
+      "role": "automated news pipeline — framework applied to current events",
+      "branch": "main",
+      "notes": "Python, GitHub Actions daily cron. Posts to commons-wire site."
+    },
+    "claude-memory": {
+      "github": "jedelman/claude-memory",
+      "role": "Claude's persistent memory substrate",
+      "branch": "main",
+      "notes": "Clone to /tmp/claude-memory at session start. Push on wrap-up."
+    },
+    "dyad": {
+      "github": "jedelman/dyad",
+      "role": "this — continuity and embodiment layer for the working relationship",
+      "branch": "main",
+      "notes": "Phase 1: local. Phase 3: atproto lexicon."
+    }
+  },
+
+  "current_focus": {
+    "project": "dyad",
+    "task": "Phase 1 build — workspace.json, identity.md, surfaces.json, CLI wrapper",
+    "context": "Building continuity layer for operator/agent working relationships. Generalizes to atproto lexicon in Phase 3."
+  },
+
+  "recent": [
+    "Added Paulo Freire thinker page to power-explained",
+    "Added organizer track (Freirean facilitation guide) to your-city.html",
+    "Rearchitected the-lockout: world-first pipeline with TAP feed + audit logging",
+    "Added adversary review step and dialogic post structure to the-lockout",
+    "Sent FREIRE-NOTE.md to Scout-Two in atproto-agent repo"
+  ]
+}
